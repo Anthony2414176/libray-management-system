@@ -1,4 +1,4 @@
-<!-- <?php
+<?php
 session_start();
 require_once 'app/database/connect.php';
 
@@ -69,4 +69,4 @@ try {
         <p><a href="index.php"> Login</a></p>
     </div>
 </body>
-</html> -->
+</html>
