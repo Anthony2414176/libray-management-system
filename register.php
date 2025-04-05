@@ -1,37 +1,55 @@
 <?php
 session_start();
-include "app/database/connect.php"; // connect database
+include "app/database/connect.php"; // Connect to the database
+
+// Generate CSRF token if not already set
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("CSRF token validation failed.");
+    }
+
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
     $password = trim($_POST['password']);
+    $confirm_password = trim($_POST['confirm_password']);
     $role = trim($_POST['role']);
 
-    // To check if email already exists
-    $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if ($stmt->num_rows > 0) {
-        $error = "Email already registered.";
+    // Validate email format
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = "Invalid email format.";
+    } elseif ($password !== $confirm_password) {
+        $error = "Passwords do not match.";
     } else {
-        // To hash password
-        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        // Check if email already exists
+        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $stmt->store_result();
 
-        // To insert new user
-        $stmt = $conn->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("ssss", $name, $email, $hashed_password, $role);
-
-        if ($stmt->execute()) {
-            header("Location: index.php"); // To redirect to login page
-            exit();
+        if ($stmt->num_rows > 0) {
+            $error = "Email already registered.";
         } else {
-            $error = "Registration failed. Try again.";
+            // Hash the password
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
+            // Insert new user
+            $stmt = $conn->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("ssss", $name, $email, $hashed_password, $role);
+
+            if ($stmt->execute()) {
+                header("Location: index.php?registered=true"); // Redirect to login page with success message
+                exit();
+            } else {
+                $error = "Registration failed. Please try again.";
+            }
         }
+        $stmt->close();
     }
-    $stmt->close();
 }
 ?>
 
@@ -41,20 +59,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="assets/css/styles.css">
-    <title>Login</title>
+    <title>Register</title>
 </head>
 <body class="login">
     <div class="login-form">
-        <h1>Library Login</h1>
+        <h1>Register</h1>
         <?php if (isset($error)) echo "<p style='color:red;'>$error</p>"; ?>
-        <form id="login-form" action="index.php" method="post">
+        <form id="login-form" action="register.php" method="post">
+            <div class="form-item">
+                <label for="name">Name</label>
+                <input type="text" name="name" id="name" required>
+            </div>
             <div class="form-item">
                 <label for="email">Email</label>
                 <input type="email" name="email" id="email" required>
             </div>
             <div class="form-item">
                 <label for="password">Password</label>
-                <input type="password" name="password" id="password" required>
+                <input type="password" name="password" id="password" required minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number, one uppercase and lowercase letter, and at least 8 characters">
+            </div>
+            <div class="form-item">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" name="confirm_password" id="confirm_password" required>
             </div>
             <div class="form-item">
                 <label for="role">Role</label>
@@ -63,15 +89,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <option value="Admin">Admin</option>
                 </select>
             </div>
-            <div><a href="reset_password.php">Forgot password?</a></div>
+            
             <div>
-                <button type="submit">Login</button>
+                <button type="submit">Register</button>
             </div>
+            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
         </form>
-        
-        <p id="no_password">Don't have an account? <a href="register.php">Register</a></p>
+        <p id="no_password">Already have an account? <a href="index.php">Login</a></p>
+        <p id="no_password">Forgot your password? <a href="forget_password.php">Reset Password</a></p>
     </div>
-
-    <script src="assets/js/script.js"></script>
 </body>
 </html>
